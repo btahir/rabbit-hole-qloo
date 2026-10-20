@@ -1,6 +1,26 @@
 import "server-only";
 import { AppError, assert } from "./errors";
 import { redisClient } from "./store";
+import type { RedisPort } from "./store";
+import { qlooAllocation } from "./config";
+
+// One atomic create. Partial/mismatched existing hashes are never repaired by
+// zeroing usage; they remain closed until the operator reconciles them.
+export const PROVISION_ALLOWANCE = `
+if redis.call('EXISTS',KEYS[1])==1 then return 0 end
+redis.call('HSET',KEYS[1],'contract',ARGV[1],'used',0)
+return 1`;
+
+export async function provisionAllowance(redis: RedisPort) {
+  const { scope, contract } = qlooAllocation();
+  return Number(
+    await redis.eval(
+      PROVISION_ALLOWANCE,
+      [`qloo:credential:${scope}:allowance:v1`],
+      [contract],
+    ),
+  );
+}
 
 // Project-local allocation: ShipTiffin isolates keyspaces. The owner divides
 // the credential allowance between apps; this project cannot spend another share.
@@ -26,24 +46,10 @@ export async function reserveCredentialAttempt() {
         process.env.APP_ORIGIN ?? "",
       ));
   if (local && !process.env.QLOO_CREDENTIAL_SCOPE) return;
-  const scope = process.env.QLOO_CREDENTIAL_SCOPE ?? "";
-  const reset = Date.parse(process.env.QLOO_QUOTA_RESETS_AT ?? "");
-  const ceiling = Number(process.env.QLOO_PROJECT_CALL_ALLOWANCE);
+  const { scope, reset, ceiling, contract } = qlooAllocation();
   const prior = 0;
-  assert(
-    /^[a-zA-Z0-9_-]{8,80}$/.test(scope) &&
-      Number.isFinite(reset) &&
-      reset > Date.now() &&
-      Number.isInteger(ceiling) &&
-      ceiling > 0 &&
-      ceiling <= 2500 &&
-      process.env.QLOO_PROJECT_ALLOCATION_VERIFIED === "1",
-    "configuration",
-    503,
-  );
   const redis = redisClient();
   assert(redis, "storage", 503);
-  const contract = JSON.stringify({ reset, ceiling });
   let result: number;
   try {
     result = Number(

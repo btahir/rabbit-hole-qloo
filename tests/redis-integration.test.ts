@@ -427,7 +427,7 @@ describe.skipIf(!available)("actual local Redis Lua and retention", () => {
 describe.skipIf(!available)("credential allowance contract", () => {
   // Reuse the tested Lua transport without any real Qloo calls.
   it("uses one atomic ledger for development reserve, judging and immutable configuration", async () => {
-    const { RESERVE_CREDENTIAL_ATTEMPT } =
+    const { RESERVE_CREDENTIAL_ATTEMPT, PROVISION_ALLOWANCE } =
       await import("../src/lib/core/qloo-allowance");
     const testSocket = `.cache/quota-${process.pid}.sock`;
     const server = spawn(
@@ -459,6 +459,19 @@ describe.skipIf(!available)("credential allowance contract", () => {
         await delay(10);
       }
       const reset = Date.now() + 86400_000;
+      const provision = (key: string, contract = "fresh-window") =>
+        cmd("EVAL", PROVISION_ALLOWANCE, "1", key, contract);
+      expect(provision("release-allocation")).toBe(1);
+      expect(cmd("TTL", "release-allocation")).toBe(-1);
+      cmd("HSET", "release-allocation", "used", "37");
+      expect(provision("release-allocation", "changed-window")).toBe(0);
+      expect(cmd("HGET", "release-allocation", "used")).toBe("37");
+      expect(cmd("HGET", "release-allocation", "contract")).toBe(
+        "fresh-window",
+      );
+      cmd("HSET", "partial-allocation", "used", "90");
+      expect(provision("partial-allocation")).toBe(0);
+      expect(cmd("HGET", "partial-allocation", "contract")).toBe(null);
       const reserve = (ceiling: number, contract = "confirmed-window") =>
         cmd(
           "EVAL",

@@ -34,9 +34,11 @@ A local production server needs `APP_ORIGIN=http://localhost:3000` and `ALLOW_ME
 
 ## Deploy on ShipTiffin
 
-[tiffin.config.ts](tiffin.config.ts) declares project `rabbit-hole`, one Next.js `web` app, a Bun build and a database release migration. ShipTiffin supplies Postgres and Valkey automatically, runs `bun --bun next start`, and adds its Next.js adapter. No extra services or custom adapter are needed.
+[tiffin.config.ts](tiffin.config.ts) declares project `rabbit-hole`, one Next.js `web` app, a Bun build and `bun run release`. ShipTiffin supplies Postgres and Valkey, runs the release hook before switching traffic, and starts Next.js under Bun with its adapter.
 
-Configure `QLOO_API_KEY`, `ANTHROPIC_API_KEY`, `SESSION_SECRET` and `SHARE_TOKEN_SECRET` as secrets; use distinct random signing secrets of at least 32 characters. Set `APP_ORIGIN` to the public HTTPS URL and configure the confirmed Qloo allocation. Run `tiffin plan`, apply the reviewed plan, then run `tiffin deploy`. See [deployment setup](docs/deployment.md) for the exact variables, quota ledger and optional opening samples. Never deploy `.env.local` or `.cache/`.
+Set just four values: `QLOO_API_KEY`, `ANTHROPIC_API_KEY`, `SESSION_SECRET` (random, at least 32 characters) and `APP_ORIGIN` (public HTTPS origin). Then run `tiffin deploy` from this checkout. [Deployment setup](docs/deployment.md) has the exact commands and defaults. No manual migration, quota provisioning or private sample import is needed.
+
+Release creates missing tables and the project allowance, preserves existing counters, and prepares three opening samples plus five saved Qloo/Haiku comparisons. It checkpoints successful work in Postgres and publishes it to Valkey. Each release permits at most 30 uncached Qloo HTTP attempts and $0.10 in bounded model reservations; repeated completed releases make no provider calls. Failed warming leaves the app serving with samples marked unavailable; search remains available when its providers are healthy. Never upload `.env.local` or `.cache/`.
 
 The agent is limited to four model steps, two Qloo Insights operations and six HTTP attempts per run, with $3/day and $25 cumulative model reservation caps by default. Shared trails expire after 30 days; anyone with a link can read it. Editing belongs to the original browser cookie.
 

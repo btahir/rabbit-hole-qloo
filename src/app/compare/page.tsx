@@ -43,15 +43,15 @@ async function Content() {
         <details>
           <summary>Comparison protocol</summary>
           <p>
-            The authored catalog contains 12 film, 12 artist and 12 book
-            identities. It was authored before observing any Qloo output. Live
-            execution confirms identifiers and freezes common eligibility. The
-            saved local comparison uses the same deterministic selector in both
-            arms; a language-model evaluation remains pending. A baseline must
-            receive no Insights scores or retrieved shortlist. Keep omissions,
-            empty results and failures. Blind the order, freeze familiarity and
-            choice before reveal, and report ties and exact counts separately
-            from public exploratory votes.
+            The curated catalog starts with 12 film, 12 artist and 12 book
+            identities. Release confirms live identifiers and removes ineligible
+            candidates before freezing each shared catalog. Both saved Haiku
+            versions use the same prompt, metadata and constraints. Only the
+            affinity version receives Qloo Insights scores and order; the
+            baseline receives the curated catalog without those results.
+            Synthetic examples and older deterministic comparisons are labelled
+            separately. These comparisons show ordering differences, not
+            measured recommendation quality or user benefit.
           </p>
           <p>No paid call occurs on page view.</p>
         </details>

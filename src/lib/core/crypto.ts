@@ -23,6 +23,14 @@ export function secret(kind: "session" | "share"): string {
     process.env[kind === "session" ? "SESSION_SECRET" : "SHARE_TOKEN_SECRET"];
   if (value && value.length >= 32) return value;
   if (
+    kind === "share" &&
+    !value &&
+    (process.env.SESSION_SECRET?.length ?? 0) >= 32
+  )
+    return createHmac("sha256", process.env.SESSION_SECRET!)
+      .update("rabbit-hole:share-encryption:v1")
+      .digest("hex");
+  if (
     process.env.NODE_ENV !== "production" ||
     (process.env.ALLOW_MEMORY_STORE === "1" &&
       /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(

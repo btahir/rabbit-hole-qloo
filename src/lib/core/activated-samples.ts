@@ -56,15 +56,45 @@ export const activationSchema = z
     (item) =>
       item.identity.id.toLowerCase() === item.review.entityId.toLowerCase(),
   );
-/** Operator-authored only after retaining private key-backed evidence for every
- * gate. The public client cannot enable a sample or submit an activation. */
+/** Automated checks are deliberately separate from operator review attestations. */
+export const releaseSampleSchema = z
+  .object({
+    identity: liveIdentitySchema,
+    preparedAt: z.iso.datetime(),
+    method: z.literal("live-discovery-and-model-selection"),
+    comparisonId: z.string().min(1).max(100),
+  })
+  .strict();
+/** Read release-prepared samples or a legacy operator-reviewed manifest.
+ * Public clients cannot enable samples or submit activations. */
 export async function activatedSamples(): Promise<Entity[]> {
   if (!process.env.QLOO_API_KEY) return [];
   const redis = redisClient();
-  let raw: unknown = redis
-    ? await redis.get(
-        `rabbit-hole:${process.env.ENTITLEMENT_NAMESPACE || "default"}:samples:v1`,
+  if (redis) {
+    try {
+      const prepared = z
+        .array(releaseSampleSchema)
+        .length(3)
+        .safeParse(
+          await redis.get(
+            `rabbit-hole:${process.env.ENTITLEMENT_NAMESPACE || "default"}:samples:v2`,
+          ),
+        );
+      if (
+        prepared.success &&
+        new Set(prepared.data.map((s) => s.identity.medium)).size === 3
       )
+        return prepared.data.map((s) => s.identity);
+    } catch {
+      return [];
+    }
+  }
+  let raw: unknown = redis
+    ? await redis
+        .get(
+          `rabbit-hole:${process.env.ENTITLEMENT_NAMESPACE || "default"}:samples:v1`,
+        )
+        .catch(() => null)
     : null;
   if (
     !redis &&

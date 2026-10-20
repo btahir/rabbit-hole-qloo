@@ -11,6 +11,7 @@ import { qlooPort } from "./qloo";
 import { applyLimits } from "./limits";
 import { media, type Generation } from "./types";
 import { savedComparisons } from "./saved-comparisons";
+import { clientIp } from "./config";
 import {
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -31,9 +32,7 @@ export function ownerFrom(request: Request) {
   return owner;
 }
 export function requestIp(request: Request) {
-  return ipHash(
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local",
-  );
+  return ipHash(clientIp(request.headers));
 }
 export function sameOrigin(request: Request) {
   const origin = process.env.APP_ORIGIN || new URL(request.url).origin;

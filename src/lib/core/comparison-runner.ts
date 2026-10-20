@@ -49,11 +49,12 @@ export async function executeComparisonArm(
   },
 ): Promise<ComparisonArmResult> {
   assert(
-    brief.catalog.length === 12 &&
+    brief.catalog.length > 0 &&
+      brief.catalog.length <= 12 &&
       brief.catalog.every((e) => e.medium === brief.medium),
   );
   assert(
-    new Set(brief.catalog.map((e) => e.id)).size === 12 &&
+    new Set(brief.catalog.map((e) => e.id)).size === brief.catalog.length &&
       brief.explicitLoves.length <= 6 &&
       brief.exclusions.length <= 96,
   );
@@ -78,14 +79,18 @@ export async function executeComparisonArm(
   );
   assert(
     !brief.catalog.some((e) => e.source === "Qloo") ||
-      eligibleCatalog.length === 12,
+      eligibleCatalog.length === brief.catalog.length,
     "configuration",
     503,
   );
   const inspectSchema = z.object({}).strict();
   const agent = new ToolLoopAgent({
     model: options.model,
-    instructions,
+    instructions: {
+      role: "system",
+      content: instructions,
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+    },
     output: Output.object({ schema: selection }),
     maxRetries: 0,
     reasoning: "none",
@@ -94,6 +99,7 @@ export async function executeComparisonArm(
     toolCallConcurrency: 1,
     tools: {
       inspectCandidates: tool({
+        providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
         description:
           "Read the frozen eligible candidate catalog and any available affinity evidence once.",
         inputSchema: inspectSchema,

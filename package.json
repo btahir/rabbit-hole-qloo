@@ -17,7 +17,8 @@
     "test:browser": "playwright test",
     "format": "prettier --write src tests *.ts *.mjs *.json README.md",
     "comparisons": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/comparisons.ts",
-    "db:migrate": "bun --conditions=react-server scripts/migrate.ts"
+    "db:migrate": "bun --conditions=react-server scripts/migrate.ts",
+    "release": "bun --conditions=react-server scripts/release.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.83",

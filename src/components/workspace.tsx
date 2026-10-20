@@ -963,7 +963,12 @@ export function Workspace({
                     <EntityArt entity={entity} compact layout="history" />
                     <Button
                       disabled={
-                        busy || creating || (!ready && !offline && !exampleMode)
+                        busy ||
+                        creating ||
+                        (!ready && !offline && !exampleMode) ||
+                        (mode === "live" &&
+                          !exampleMode &&
+                          liveSamples.length !== 3)
                       }
                       onClick={() => create(entity, true)}
                     >
@@ -981,6 +986,12 @@ export function Workspace({
                   </li>
                 ))}
               </ul>
+              {mode === "live" && !exampleMode && liveSamples.length !== 3 ? (
+                <p role="status">
+                  Live samples are unavailable. Search for your own starting
+                  point below.
+                </p>
+              ) : null}
               <p className="own-start-label">
                 Or start with your own favourite
               </p>
@@ -1169,7 +1180,10 @@ export function Workspace({
                 className="opening-enter"
                 variant="default"
                 disabled={
-                  busy || creating || (!ready && !offline && !exampleMode)
+                  busy ||
+                  creating ||
+                  (!ready && !offline && !exampleMode) ||
+                  (currentMode === "live" && liveSamples.length !== 3)
                 }
                 onClick={() =>
                   create(

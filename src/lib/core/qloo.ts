@@ -39,7 +39,11 @@ export interface DiscoveryResult {
 }
 export interface QlooPort {
   resolveStart(query: string, medium: Medium): Promise<Entity[]>;
-  describeEntities(ids: string[], medium: Medium): Promise<Entity[]>;
+  describeEntities(
+    ids: string[],
+    medium: Medium,
+    eligibleOnly?: boolean,
+  ): Promise<Entity[]>;
   insights(input: DiscoveryInput): Promise<DiscoveryResult>;
 }
 const memoryCache = new MemoryCache(2000, 32 * 1024 * 1024);
@@ -72,6 +76,9 @@ export function qlooPort(options: {
   signal?: AbortSignal;
   onEvent?: (message: string) => Promise<void>;
   fetch?: typeof fetch;
+  /** Release-only guard, called for every uncached HTTP attempt, including retries. */
+  beforeAttempt?: () => void;
+  publicSampleIds?: string[];
 }): QlooPort {
   const { storage, owner, mode, runId, trailId, signal, onEvent } = options;
   let client: QlooClient | undefined;
@@ -103,6 +110,7 @@ export function qlooPort(options: {
     const transport = (shared = false) => ({
       mode: "live" as const,
       fetch: async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        options.beforeAttempt?.();
         const lease = randomId(),
           now = Date.now();
         try {
@@ -239,7 +247,7 @@ export function qlooPort(options: {
         return rethrow(e);
       }
     },
-    async describeEntities(ids, medium) {
+    async describeEntities(ids, medium, eligibleOnly = false) {
       assert(
         ids.length > 0 && ids.length <= 12 && new Set(ids).size === ids.length,
       );
@@ -256,6 +264,7 @@ export function qlooPort(options: {
           requestOptions,
         );
         return result.data.results
+          .filter((row) => !eligibleOnly || eligibleSuggestion(row))
           .map((row) =>
             normalizeEntity(row, medium, result.provenance.fetchedAt),
           )
@@ -326,9 +335,10 @@ export function qlooPort(options: {
             !input.catalog &&
             !input.loves?.length &&
             input.exclusions.every((id) => id === input.anchor.id) &&
-            (await activatedSamples()).some(
-              (entity) => entity.id === input.anchor.id,
-            );
+            (options.publicSampleIds?.includes(input.anchor.id) ||
+              (await activatedSamples()).some(
+                (entity) => entity.id === input.anchor.id,
+              ));
           result = publicSample
             ? await publicQuery(
                 hash(

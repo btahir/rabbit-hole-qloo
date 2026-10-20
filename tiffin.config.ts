@@ -7,7 +7,7 @@ export default defineConfig({
       path: ".",
       install: "bun install --frozen-lockfile",
       build: "bun --bun next build",
-      release: "bun run db:migrate",
+      release: "bun run release",
     },
   },
 });

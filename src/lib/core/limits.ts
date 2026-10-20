@@ -3,6 +3,21 @@ import { AppError, assert } from "./errors";
 import type { Database, Run, Trail } from "./types";
 export const dayKey = (now: number) => new Date(now).toISOString().slice(0, 10);
 export const RESERVATION = 20_000; // microdollars; integer accounting throughout
+export function reserveModelBudget(db: Database, amount: number, now: number) {
+  const day = dayKey(now);
+  const daily = Number(process.env.DAILY_BUDGET_USD || 3) * 1e6;
+  const cumulative = Number(process.env.TOTAL_BUDGET_USD || 25) * 1e6;
+  if (
+    !Number.isSafeInteger(amount) ||
+    amount < 0 ||
+    ![daily, cumulative].every((n) => Number.isFinite(n) && n >= 0) ||
+    (db.budgets.daily[day] ?? 0) + amount > daily ||
+    db.budgets.cumulative + amount > cumulative
+  )
+    throw new AppError("paused", 503);
+  db.budgets.daily[day] = (db.budgets.daily[day] ?? 0) + amount;
+  db.budgets.cumulative += amount;
+}
 export function rate(
   db: Database,
   key: string,
@@ -73,18 +88,7 @@ export function reserve(
   if (active.some((r) => r.owner === run.owner) || active.length >= 10)
     throw new AppError("limit", 429, now + 60_000);
   applyLimits(db, run.owner, ip, "run", now);
-  const amount = run.reserved,
-    day = dayKey(now);
-  const daily = Number(process.env.DAILY_BUDGET_USD || 3) * 1e6,
-    cumulative = Number(process.env.TOTAL_BUDGET_USD || 25) * 1e6;
-  if (
-    ![daily, cumulative].every((n) => Number.isFinite(n) && n >= 0) ||
-    (db.budgets.daily[day] ?? 0) + amount > daily ||
-    db.budgets.cumulative + amount > cumulative
-  )
-    throw new AppError("paused", 503);
-  db.budgets.daily[day] = (db.budgets.daily[day] ?? 0) + amount;
-  db.budgets.cumulative += amount;
+  reserveModelBudget(db, run.reserved, now);
   trail.counters.runs++;
   trail.activeRun = run.id;
   db.runs[run.id] = run;

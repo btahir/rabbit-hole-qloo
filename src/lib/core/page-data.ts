@@ -6,12 +6,13 @@ import { verifySession, ipHash } from "./crypto";
 import { AppError, errorCopy } from "./errors";
 import { store } from "./store";
 import { TrailService } from "./service";
+import { clientIp } from "./config";
 export async function pageIdentity() {
   await connection();
   const [jar, head] = await Promise.all([cookies(), headers()]);
   return {
     owner: verifySession(jar.get(COOKIE)?.value),
-    ip: ipHash(head.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local"),
+    ip: ipHash(clientIp(head)),
   };
 }
 export async function ownerPage(trailId: string) {
