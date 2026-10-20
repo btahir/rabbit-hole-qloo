@@ -26,9 +26,13 @@ const config: NextConfig = {
         headers: [
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "X-Robots-Tag", value: "noindex, nofollow" },
         ],
       },
+      // Owner trails, share links and the API stay out of search results.
+      ...["/api/:path*", "/t/:path*", "/s/:path*"].map((source) => ({
+        source,
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      })),
       {
         source: "/fonts/:path*",
         headers: [

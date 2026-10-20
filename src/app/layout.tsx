@@ -1,13 +1,24 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { siteDescription, siteOrigin } from "@/lib/site";
 import { earlyIntentScript } from "@/components/early-intent";
+const title = "Rabbit Hole: follow a film into music and books";
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.APP_ORIGIN || "http://localhost:3000"),
-  title: "Rabbit Hole",
-  description: "Follow three discoveries across films, music and books.",
-  robots: { index: false, follow: false },
+  metadataBase: new URL(siteOrigin()),
+  title: { default: title, template: "%s | Rabbit Hole" },
+  description: siteDescription,
+  applicationName: "Rabbit Hole",
+  openGraph: {
+    type: "website",
+    siteName: "Rabbit Hole",
+    title,
+    description: siteDescription,
+    url: "/",
+  },
+  twitter: { card: "summary_large_image", title, description: siteDescription },
   referrer: "no-referrer",
 };
+export const viewport: Viewport = { themeColor: "#131411" };
 export default function Layout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {

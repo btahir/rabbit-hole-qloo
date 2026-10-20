@@ -62,12 +62,16 @@ export async function generateMetadata({
     const title = `${snapshot.root.name} → ${path.at(-1)!.name} | Rabbit Hole`;
     const description = `${path.map((e) => e.name).join(" → ")}. Keep the beginning. Choose your own ending.`;
     return {
-      title,
+      title: { absolute: title },
       description,
+      robots: { index: false, follow: false },
       openGraph: { title, description, type: "website" },
       twitter: { card: "summary_large_image", title, description },
     };
   } catch {
-    return { title: "This trail isn't available | Rabbit Hole" };
+    return {
+      title: { absolute: "This trail isn't available | Rabbit Hole" },
+      robots: { index: false, follow: false },
+    };
   }
 }

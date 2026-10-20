@@ -4,6 +4,8 @@ import { connection } from "next/server";
 import { Workspace } from "@/components/workspace";
 import { activatedSamples } from "@/lib/core/activated-samples";
 import { configuredMode } from "@/lib/core/fixtures";
+import type { Metadata } from "next";
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 async function Content() {
   await connection();
   const mode = configuredMode();

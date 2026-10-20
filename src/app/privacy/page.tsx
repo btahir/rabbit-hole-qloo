@@ -1,5 +1,12 @@
 import { PageHeader, PageFooter } from "@/components/page-chrome";
 import Link from "next/link";
+import type { Metadata } from "next";
+export const metadata: Metadata = {
+  title: "Privacy and retention",
+  description:
+    "What Rabbit Hole stores, for how long, and which providers see your starting point.",
+  alternates: { canonical: "/privacy" },
+};
 export default function Privacy() {
   return (
     <>

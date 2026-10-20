@@ -5,6 +5,13 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { connection } from "next/server";
 import { savedComparisons } from "@/lib/core/saved-comparisons";
+import type { Metadata } from "next";
+export const metadata: Metadata = {
+  title: "With and without Qloo",
+  description:
+    "Five saved starting points explored with and without Qloo taste connections, side by side.",
+  alternates: { canonical: "/compare" },
+};
 async function Content() {
   await connection();
   const comparisons = await savedComparisons();
