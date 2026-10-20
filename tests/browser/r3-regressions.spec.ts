@@ -260,7 +260,7 @@ test("visitor bootstrap recovers independently before forking", async ({
       : route.continue(),
   );
   await visitor.goto(href!);
-  await expect(visible(visitor, "Make your own trail")).toBeDisabled();
+  await expect(visible(visitor, "Try again")).toBeVisible();
   await visible(visitor, "Try again").click();
   await expect(visible(visitor, "Make your own trail")).toBeEnabled();
   await visible(visitor, "Make your own trail").click();

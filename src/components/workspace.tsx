@@ -37,6 +37,13 @@ import {
   RequestError,
   type Failure,
 } from "./use-trail";
+import { takeEarlyIntent } from "./early-intent";
+type SessionInfo = {
+  current?: string;
+  previous?: string;
+  previousSummary?: { rootName: string; choices: number };
+  continuation?: { rootName: string; choices: number };
+};
 type DrawerName =
   | "how"
   | "privacy"
@@ -135,19 +142,41 @@ export function Workspace({
   >(undefined);
   const mainRef = useRef<HTMLElement>(null);
   const [sessionAttempt, setSessionAttempt] = useState(0);
+  // One session request per attempt. Actions taken while it is in flight wait
+  // for it instead of being dropped (a cold first click must still work).
+  const sessionFlight = useRef<Promise<SessionInfo> | undefined>(undefined);
+  const readyRef = useRef(false);
+  const waitingForSession = useRef(false);
+  const [startingId, setStartingId] = useState<string>();
+  const sessionSettled = useRef(false);
+  const session = () => {
+    if (!sessionFlight.current) {
+      sessionSettled.current = false;
+      sessionFlight.current = apiRequest<SessionInfo>("/api/session", {})
+        .then((s) => {
+          readyRef.current = true;
+          setReady(true);
+          return s;
+        })
+        .finally(() => {
+          sessionSettled.current = true;
+        });
+    }
+    return sessionFlight.current;
+  };
   const searchSequence = useRef(0);
   const searchResultHeading = useRef<HTMLHeadingElement>(null);
   const rootInput = useRef<HTMLInputElement>(null);
   const searchController = useRef<AbortController | undefined>(undefined),
     panel = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    apiRequest<{
-      current?: string;
-      previous?: string;
-      previousSummary?: { rootName: string; choices: number };
-      continuation?: { rootName: string; choices: number };
-    }>("/api/session", {})
+    // Reuse a request still in flight (a click may have started it), but ask
+    // again on every mount: a page restored from the router cache needs
+    // fresh continuation details.
+    if (sessionSettled.current) sessionFlight.current = undefined;
+    session()
       .then((s) => {
+        readyRef.current = true;
         setReady(true);
         flow.setFailure((current) =>
           current?.operation === "session" ? undefined : current,
@@ -156,7 +185,11 @@ export function Workspace({
           requestAnimationFrame(() =>
             (trail ? panel.current : rootInput.current)?.focus(),
           );
-        if (!initial && window.location.pathname === "/") {
+        if (
+          !initial &&
+          window.location.pathname === "/" &&
+          !waitingForSession.current
+        ) {
           setNewStart(true);
           setCreating(false);
           creatingRef.current = false;
@@ -172,6 +205,7 @@ export function Workspace({
           flow.setMessage("Your trail was deleted.");
       })
       .catch((error) => {
+        sessionFlight.current = undefined;
         const detail =
           error instanceof RequestError &&
           error.detail.error &&
@@ -187,6 +221,30 @@ export function Workspace({
       });
     if (initialError) flow.setFailure(initialError);
   }, [sessionAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Carry out a click or search submitted before hydration finished.
+    const intent = takeEarlyIntent();
+    if (!intent || (trail && !newStart)) return;
+    const shown =
+      mode === "live" && liveSamples.length === 3 ? liveSamples : samples;
+    if (intent.kind === "enter") void create(openingEntity, true);
+    else if (intent.kind.startsWith("sample:")) {
+      const entity = shown.find((e) => `sample:${e.id}` === intent.kind);
+      if (entity) void create(entity, true);
+    } else if (intent.kind === "find" && intent.query) {
+      const early = {
+        query: intent.query,
+        medium: (media as readonly string[]).includes(intent.medium ?? "")
+          ? (intent.medium as Medium)
+          : medium,
+      };
+      queueMicrotask(() => {
+        setQuery(early.query);
+        setMedium(early.medium);
+        void find(undefined, early);
+      });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!initial || sessionStorage.getItem("rabbit-focus-trail") !== initial.id)
       return;
@@ -233,14 +291,20 @@ export function Workspace({
       : mode
     : (trail?.mode ?? mode);
   const anchor = trail?.steps.at(-1)?.entity ?? trail?.root;
+  const openingEntity =
+    currentMode === "live" && liveSamples[0] ? liveSamples[0] : samples[0];
   const doors = trail ? visibleDoors(trail) : [];
   const changed = () => {
     setDestination("auto");
     setKeptDirection(false);
     requestAnimationFrame(() => panel.current?.focus());
   };
-  async function find(event: FormEvent) {
-    event.preventDefault();
+  async function find(
+    event?: FormEvent,
+    early?: { query: string; medium: Medium },
+  ) {
+    event?.preventDefault();
+    const searchMedium = early?.medium ?? medium;
     if (
       searching ||
       creatingRef.current ||
@@ -249,7 +313,7 @@ export function Workspace({
       return;
     setSearchMessage("");
     flow.setFailure(undefined);
-    const q = query.trim();
+    const q = (early?.query ?? query).trim();
     if (q.length < 2) {
       setSearchMessage("Enter at least two characters.");
       rootInput.current?.focus();
@@ -265,7 +329,7 @@ export function Workspace({
       (newStart && trail?.mode === "fixture" && currentMode === "fixture") ||
       ((!ready || offline) && currentMode === "fixture")
     ) {
-      const entities = fixtureSearch(q, medium);
+      const entities = fixtureSearch(q, searchMedium);
       setSelected(undefined);
       setResults(entities.length ? entities : undefined);
       if (!entities.length)
@@ -288,9 +352,18 @@ export function Workspace({
     const controller = new AbortController();
     searchController.current = controller;
     try {
+      if (!readyRef.current) {
+        try {
+          await session();
+        } catch {
+          return; // The session effect shows the failure and a retry.
+        }
+        if (controller.signal.aborted || sequence !== searchSequence.current)
+          return;
+      }
       const result = await apiRequest<{ entities: Entity[] }>(
         "/api/search",
-        { query: q, medium },
+        { query: q, medium: searchMedium },
         "POST",
         controller.signal,
       );
@@ -318,23 +391,36 @@ export function Workspace({
   async function create(entity: Entity, sample = false) {
     if (creatingRef.current) return;
     flow.setFailure(undefined);
-    if (currentMode === "fixture" && (offline || !ready)) {
-      flow.createLocalExample(entity, !ready && !offline);
+    const startLocalExample = async (detached: boolean) => {
+      flow.createLocalExample(entity, detached);
       setNewStart(false);
       setExampleMode(true);
       if (sample) await flow.generate("auto", false);
       changed();
-      return;
-    }
-    if (offline || !ready) return;
+    };
+    if (currentMode === "fixture" && offline) return startLocalExample(false);
+    if (offline) return;
+    let localFallback = false;
     creatingRef.current = true;
     setCreating(true);
+    setStartingId(entity.id);
     const signature = `${entity.id}:${sample}:${exampleMode}`;
     if (creationIntent.current?.signature !== signature)
       creationIntent.current = { signature, key: requestKey() };
     const creationKey = creationIntent.current.key;
     let navigating = false;
     try {
+      if (!readyRef.current) {
+        waitingForSession.current = true;
+        try {
+          await session();
+        } catch {
+          // Examples still run in this browser; live starts show the
+          // session failure and its retry instead.
+          localFallback = currentMode === "fixture";
+          return;
+        }
+      }
       if (
         sample &&
         !exampleMode &&
@@ -375,10 +461,13 @@ export function Workspace({
     } catch (error) {
       flow.report(error);
     } finally {
+      waitingForSession.current = false;
       if (!navigating) {
         creatingRef.current = false;
         setCreating(false);
+        setStartingId(undefined);
       }
+      if (localFallback) await startLocalExample(true);
     }
   }
   function invalidateSearch() {
@@ -962,10 +1051,11 @@ export function Workspace({
                   <li key={entity.id}>
                     <EntityArt entity={entity} compact layout="history" />
                     <Button
+                      data-early={`sample:${entity.id}`}
+                      aria-busy={creating && startingId === entity.id}
                       disabled={
                         busy ||
                         creating ||
-                        (!ready && !offline && !exampleMode) ||
                         (mode === "live" &&
                           !exampleMode &&
                           liveSamples.length !== 3)
@@ -973,7 +1063,11 @@ export function Workspace({
                       onClick={() => create(entity, true)}
                     >
                       {entity.name}
-                      <span aria-hidden="true">↗</span>
+                      <span aria-hidden="true">
+                        {creating && startingId === entity.id
+                          ? "Opening…"
+                          : "↗"}
+                      </span>
                     </Button>
                     <p className="metadata">
                       {label[entity.medium]}
@@ -995,7 +1089,7 @@ export function Workspace({
               <p className="own-start-label">
                 Or start with your own favourite
               </p>
-              <form className="start-form" onSubmit={find}>
+              <form className="start-form" data-early="find" onSubmit={find}>
                 <label htmlFor="root-query">Your starting point</label>
                 <input
                   id="root-query"
@@ -1032,7 +1126,7 @@ export function Workspace({
                     type="submit"
                     variant="default"
                     disabled={
-                      (currentMode !== "fixture" && (!ready || offline)) ||
+                      (currentMode !== "fixture" && offline) ||
                       searching ||
                       creating ||
                       (currentMode !== "fixture" &&
@@ -1179,22 +1273,18 @@ export function Workspace({
               <Button
                 className="opening-enter"
                 variant="default"
+                data-early="enter"
+                aria-busy={creating && startingId === openingEntity.id}
                 disabled={
                   busy ||
                   creating ||
-                  (!ready && !offline && !exampleMode) ||
                   (currentMode === "live" && liveSamples.length !== 3)
                 }
-                onClick={() =>
-                  create(
-                    currentMode === "live" && liveSamples[0]
-                      ? liveSamples[0]
-                      : samples[0],
-                    true,
-                  )
-                }
+                onClick={() => create(openingEntity, true)}
               >
-                Enter the rabbit hole
+                {creating && startingId === openingEntity.id
+                  ? "Opening the first doors…"
+                  : "Enter the rabbit hole"}
               </Button>
             </figure>
           </section>

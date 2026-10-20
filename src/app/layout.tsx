@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { earlyIntentScript } from "@/components/early-intent";
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_ORIGIN || "http://localhost:3000"),
   title: "Rabbit Hole",
@@ -11,7 +12,8 @@ export default function Layout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    // The early-intent script may mark <html> before React hydrates.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link
           rel="preload"
@@ -28,7 +30,10 @@ export default function Layout({
           crossOrigin="anonymous"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <script dangerouslySetInnerHTML={{ __html: earlyIntentScript }} />
+        {children}
+      </body>
     </html>
   );
 }

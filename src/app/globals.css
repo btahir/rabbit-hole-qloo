@@ -4597,3 +4597,16 @@ footer > a:first-child {
     animation-delay: 210ms;
   }
 }
+/* A start or fork that is waiting for the session shows progress, not a dead button. */
+.button[aria-busy="true"]:disabled {
+  opacity: 1;
+  cursor: progress;
+}
+html[data-early-pending="enter"] .opening-enter,
+html[data-early-pending^="sample:"] .sample-list,
+html[data-early-pending="find"] .start-form,
+html[data-early-pending="fork"] .recipient-heading .button,
+html[data-early-pending="fork"] .fork-invitation .button {
+  cursor: progress;
+  opacity: 0.72;
+}

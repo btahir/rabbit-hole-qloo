@@ -17,6 +17,9 @@ export default defineConfig({
       QLOO_MODE: process.env.RABBIT_LIVE_E2E ? "live" : "fixture",
       QLOO_DEV_CACHE_DIR: ".cache/qloo",
       NEXT_TELEMETRY_DISABLED: "1",
+      // Test visitors send documentation-range x-forwarded-for addresses so
+      // per-IP limits stay on without every test sharing one bucket.
+      TRUST_PROXY: "1",
     },
   },
 });

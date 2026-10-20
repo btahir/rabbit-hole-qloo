@@ -14,6 +14,7 @@ import {
   RequestError,
   type Failure,
 } from "./use-trail";
+import { takeEarlyIntent } from "./early-intent";
 export function Visitor({
   snapshot,
   token,
@@ -50,14 +51,38 @@ export function Visitor({
   }, [failure?.retryAt]);
   const cooling = !!failure?.retryAt && clockNow < failure.retryAt;
   const unavailable = failure?.error === "missing";
+  // Forking needs the session cookie. Opening the drawer does not, so the
+  // buttons work at once and the fork itself waits for this request.
+  const sessionFlight = useRef<Promise<unknown> | undefined>(undefined);
+  const sessionSettled = useRef(false);
+  const session = () => {
+    if (!sessionFlight.current) {
+      sessionSettled.current = false;
+      sessionFlight.current = apiRequest("/api/session", {}).finally(() => {
+        sessionSettled.current = true;
+      });
+    }
+    return sessionFlight.current;
+  };
   useEffect(() => {
-    apiRequest("/api/session", {})
+    // Reuse a request still in flight (a click may have started it), but ask
+    // again on every mount: a page restored from the router cache needs
+    // fresh continuation details.
+    if (sessionSettled.current) sessionFlight.current = undefined;
+    session()
       .then(() => {
         setReady(true);
         setFailure(undefined);
       })
-      .catch(report);
+      .catch((error) => {
+        sessionFlight.current = undefined;
+        report(error);
+      });
   }, [sessionAttempt]);
+  useEffect(() => {
+    if (takeEarlyIntent()?.kind === "fork")
+      queueMicrotask(() => setForking(true));
+  }, []);
   const forkGuard = useRef(false);
   const forkIntent = useRef<{ signature: string; key: string } | undefined>(
     undefined,
@@ -77,6 +102,7 @@ export function Visitor({
     if (forkIntent.current?.signature !== signature)
       forkIntent.current = { signature, key: requestKey() };
     try {
+      await session();
       const result = await apiRequest<{ id: string }>("/api/forks", {
         shareToken: token,
         branchPoint: point,
@@ -128,7 +154,8 @@ export function Visitor({
             <h1>Look where this led.</h1>
           </div>
           <Button
-            disabled={!ready || cooling || unavailable}
+            data-early="fork"
+            disabled={cooling || unavailable}
             onClick={() => setForking(true)}
           >
             Take a different turn →
@@ -161,7 +188,8 @@ export function Visitor({
           <h2>Where would you take it?</h2>
           <Button
             variant="default"
-            disabled={!ready || cooling || unavailable}
+            data-early="fork"
+            disabled={cooling || unavailable}
             onClick={() => setForking(true)}
           >
             Make your own trail
