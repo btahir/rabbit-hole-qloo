@@ -1,0 +1,8 @@
+node_modules/
+.npm-cache/
+.vitest/
+coverage/
+live-samples/
+.env*
+!.env.example
+.docs-review.json
